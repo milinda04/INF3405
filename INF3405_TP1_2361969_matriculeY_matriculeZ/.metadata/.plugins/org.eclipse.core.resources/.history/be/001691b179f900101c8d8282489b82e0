@@ -1,0 +1,220 @@
+package server;
+
+import java.io.*;
+import java.net.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+public class Server {
+    private static ServerSocket listener;
+    private static final String USER_DB_FILE = "users.txt";
+    private static Map<String, String> userDatabase = new HashMap<>();
+    
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        
+        // Demander l'adresse IP du serveur
+        String serverAddress = "";
+        while (true) {
+            System.out.print("Entrez l'adresse IP du serveur: ");
+            serverAddress = scanner.nextLine().trim();
+            if (isValidIP(serverAddress)) {
+                break;
+            } else {
+                System.out.println("Erreur: Adresse IP invalide. Format attendu: xxx.xxx.xxx.xxx");
+            }
+        }
+        
+        // Demander le port d'écoute
+        int serverPort = 0;
+        while (true) {
+            System.out.print("Entrez le port d'écoute (5000-5050): ");
+            try {
+                serverPort = Integer.parseInt(scanner.nextLine().trim());
+                if (serverPort >= 5000 && serverPort <= 5050) {
+                    break;
+                } else {
+                    System.out.println("Erreur: Le port doit être entre 5000 et 5050.");
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("Erreur: Veuillez entrer un nombre valide.");
+            }
+        }
+        
+        // Charger la base de données des utilisateurs
+        loadUserDatabase();
+        
+        try {
+            // Création du socket serveur
+            listener = new ServerSocket();
+            listener.setReuseAddress(true);
+            InetAddress serverIP = InetAddress.getByName(serverAddress);
+            listener.bind(new InetSocketAddress(serverIP, serverPort));
+            
+            System.out.format("Le serveur est lancé sur %s:%d%n", serverAddress, serverPort);
+            System.out.println("En attente de connexions...\n");
+            
+            int clientNumber = 0;
+            
+            while (true) {
+                // Accepter les connexions des clients
+                Socket clientSocket = listener.accept();
+                new ClientHandler(clientSocket, clientNumber++).start();
+            }
+            
+        } catch (IOException e) {
+            System.err.println("Erreur du serveur: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            try {
+                if (listener != null) {
+                    listener.close();
+                }
+            } catch (IOException e) {
+                System.err.println("Erreur lors de la fermeture du serveur: " + e.getMessage());
+            }
+        }
+    }
+    
+    // Valider le format de l'adresse IP
+    private static boolean isValidIP(String ip) {
+        if (ip == null || ip.isEmpty()) {
+            return false;
+        }
+        
+        String[] parts = ip.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        
+        for (String part : parts) {
+            try {
+                int num = Integer.parseInt(part);
+                if (num < 0 || num > 255) {
+                    return false;
+                }
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    // Charger la base de données des utilisateurs depuis le fichier
+    private static void loadUserDatabase() {
+        File file = new File(USER_DB_FILE);
+        if (!file.exists()) {
+            System.out.println("Aucune base de données existante. Création d'une nouvelle base.");
+            return;
+        }
+        
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",");
+                if (parts.length == 2) {
+                    userDatabase.put(parts[0], parts[1]);
+                }
+            }
+            System.out.println("Base de données chargée: " + userDatabase.size() + " utilisateur(s).");
+        } catch (IOException e) {
+            System.err.println("Erreur lors du chargement de la base de données: " + e.getMessage());
+        }
+    }
+    
+    // Sauvegarder la base de données des utilisateurs dans le fichier
+    private static synchronized void saveUserDatabase() {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(USER_DB_FILE))) {
+            for (Map.Entry<String, String> entry : userDatabase.entrySet()) {
+                writer.write(entry.getKey() + "," + entry.getValue());
+                writer.newLine();
+            }
+        } catch (IOException e) {
+            System.err.println("Erreur lors de la sauvegarde de la base de données: " + e.getMessage());
+        }
+    }
+    
+    // Authentifier un utilisateur ou créer un nouveau compte
+    private static synchronized boolean authenticateUser(String username, String password) {
+        if (userDatabase.containsKey(username)) {
+            return userDatabase.get(username).equals(password);
+        } else {
+            // Créer un nouveau compte
+            userDatabase.put(username, password);
+            saveUserDatabase();
+            System.out.println("Nouveau compte créé pour: " + username);
+            return true;
+        }
+    }
+    
+    // Classe pour gérer chaque client
+    private static class ClientHandler extends Thread {
+        private Socket socket;
+        private int clientNumber;
+        
+        public ClientHandler(Socket socket, int clientNumber) {
+            this.socket = socket;
+            this.clientNumber = clientNumber;
+        }
+        
+        @Override
+        public void run() {
+            try {
+                DataInputStream in = new DataInputStream(socket.getInputStream());
+                DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+                
+                // Recevoir les informations d'authentification
+                String username = in.readUTF();
+                String password = in.readUTF();
+                
+                // Vérifier l'authentification
+                if (authenticateUser(username, password)) {
+                    out.writeUTF("AUTH_SUCCESS");
+                    out.flush();
+                    
+                    // Recevoir le nom de l'image
+                    String imageName = in.readUTF();
+                    
+                    // Recevoir la taille de l'image
+                    long fileSize = in.readLong();
+                    
+                    // Afficher les informations de la demande
+                    String clientAddress = socket.getInetAddress().getHostAddress();
+                    int clientPort = socket.getPort();
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd@HH:mm:ss");
+                    String timestamp = sdf.format(new Date());
+                    
+                    System.out.format("[%s - %s:%d - %s] : Image %s reçue pour traitement.%n",
+                            username, clientAddress, clientPort, timestamp, imageName);
+                    
+                    // Recevoir l'image
+                    byte[] imageData = new byte[(int) fileSize];
+                    in.readFully(imageData);
+                    
+                    // Appliquer le filtre de Sobel
+                    byte[] processedImage = Sobel.applyFilter(imageData);
+                    
+                    // Envoyer l'image traitée au client
+                    out.writeLong(processedImage.length);
+                    out.write(processedImage);
+                    out.flush();
+                    
+                    System.out.format("[%s] : Image traitée envoyée.%n", username);
+                    
+                } else {
+                    out.writeUTF("AUTH_FAILED");
+                    out.flush();
+                }
+                
+            } catch (IOException e) {
+                System.err.println("Erreur avec le client #" + clientNumber + ": " + e.getMessage());
+            } finally {
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    System.err.println("Erreur lors de la fermeture du socket: " + e.getMessage());
+                }
+            }
+        }
+    }
+}}

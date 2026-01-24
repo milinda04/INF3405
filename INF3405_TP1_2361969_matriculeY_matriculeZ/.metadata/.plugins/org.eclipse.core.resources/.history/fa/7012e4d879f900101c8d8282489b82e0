@@ -1,0 +1,80 @@
+package server;
+
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class Server {
+    private static ServerSocket listener;
+    private static final String USER_DB_FILE = "users.txt";
+    private static Map<String, String> userDatabase = new HashMap<>();
+    
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        
+        String serverAddress = "";
+        while (true) {
+            System.out.print("Entrez l'adresse IP du serveur: ");
+            serverAddress = scanner.nextLine().trim();
+            if (isValidIP(serverAddress)) break;
+            System.out.println("Erreur: Adresse IP invalide.");
+        }
+        
+        int serverPort = 0;
+        while (true) {
+            System.out.print("Entrez le port d'écoute (5000-5050): ");
+            try {
+                serverPort = Integer.parseInt(scanner.nextLine().trim());
+                if (serverPort >= 5000 && serverPort <= 5050) break;
+                System.out.println("Erreur: Le port doit être entre 5000 et 5050.");
+            } catch (NumberFormatException e) {
+                System.out.println("Erreur: Veuillez entrer un nombre valide.");
+            }
+        }
+        
+        loadUserDatabase();
+        
+        try {
+            listener = new ServerSocket();
+            listener.setReuseAddress(true);
+            InetAddress serverIP = InetAddress.getByName(serverAddress);
+            listener.bind(new InetSocketAddress(serverIP, serverPort));
+            
+            System.out.format("The server is running on %s:%d%n", serverAddress, serverPort); [cite: 28]
+            
+            int clientNumber = 0;
+            while (true) {
+                Socket clientSocket = listener.accept(); [cite: 28]
+                new ClientHandler(clientSocket, clientNumber++, userDatabase, USER_DB_FILE).start(); [cite: 28]
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try { if (listener != null) listener.close(); } catch (IOException e) {} [cite: 31]
+        }
+    }
+
+    private static boolean isValidIP(String ip) {
+        String[] parts = ip.split("\\.");
+        if (parts.length != 4) return false;
+        for (String part : parts) {
+            try {
+                int num = Integer.parseInt(part);
+                if (num < 0 || num > 255) return false;
+            } catch (NumberFormatException e) { return false; }
+        }
+        return true;
+    }
+
+    private static void loadUserDatabase() {
+        File file = new File(USER_DB_FILE);
+        if (!file.exists()) return;
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",");
+                if (parts.length == 2) userDatabase.put(parts[0], parts[1]);
+            }
+        } catch (IOException e) { e.printStackTrace(); }
+    }
+}

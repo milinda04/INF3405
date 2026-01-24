@@ -1,0 +1,61 @@
+package server;
+
+import java.io.*;
+import java.net.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+
+public class ClientHandler extends Thread {
+    private Socket socket;
+    private Map<String, String> db;
+    private String dbPath;
+
+    public ClientHandler(Socket s, Map<String, String> db, String path) {
+        this.socket = s; this.db = db; this.dbPath = path;
+    }
+
+    public void run() {
+        try (DataInputStream in = new DataInputStream(socket.getInputStream());
+             DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
+
+            String user = in.readUTF();
+            String pass = in.readUTF();
+
+            if (!authenticate(user, pass)) {
+                out.writeUTF("AUTH_FAILED");
+                return;
+            }
+            out.writeUTF("AUTH_SUCCESS");
+
+            String imgName = in.readUTF();
+            byte[] data = new byte[in.readInt()];
+            in.readFully(data);
+
+            String ts = new SimpleDateFormat("yyyy-MM-dd@HH:mm:ss").format(new Date());
+            System.out.format("[%s - %s:%d - %s] : Image %s reçue.%n", 
+                              user, socket.getInetAddress().getHostAddress(), socket.getPort(), ts, imgName);
+
+            BufferedImage proc = Sobel.process(ImageIO.read(new ByteArrayInputStream(data)));
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            ImageIO.write(proc, "jpg", bos);
+            byte[] outData = bos.toByteArray();
+
+            out.writeInt(outData.length);
+            out.write(outData);
+
+        } catch (Exception e) {
+            System.err.println("Erreur Handler: " + e.getMessage());
+        }
+    }
+
+    private synchronized boolean authenticate(String u, String p) {
+        if (db.containsKey(u)) return db.get(u).equals(p);
+        db.put(u, p);
+        try (PrintWriter w = new PrintWriter(new FileWriter(dbPath, true))) {
+            w.println(u + "," + p);
+        } catch (IOException e) {}
+        return true;
+    }
+}

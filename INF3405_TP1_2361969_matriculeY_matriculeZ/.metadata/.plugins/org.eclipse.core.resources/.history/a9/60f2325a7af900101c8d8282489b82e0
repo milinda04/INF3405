@@ -1,0 +1,84 @@
+package server;
+
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class Server {
+    private static ServerSocket listener;
+    private static final String USER_DB_FILE = "users.txt";
+    private static Map<String, String> userDatabase = new HashMap<>();
+    
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        
+        // Validation de l'IP
+        String serverAddress = "";
+        while (true) {
+            System.out.print("Entrez l'adresse IP du serveur: ");
+            serverAddress = scanner.nextLine().trim();
+            if (isValidIP(serverAddress)) break;
+            System.out.println("Erreur: Format IP invalide (ex: 127.0.0.1).");
+        }
+        
+        // Validation du Port
+        int serverPort = 0;
+        while (true) {
+            System.out.print("Entrez le port d'écoute (5000-5050): ");
+            try {
+                serverPort = Integer.parseInt(scanner.nextLine().trim());
+                if (serverPort >= 5000 && serverPort <= 5050) break;
+                System.out.println("Erreur: Le port doit être entre 5000 et 5050.");
+            } catch (NumberFormatException e) {
+                System.out.println("Erreur: Veuillez entrer un nombre valide.");
+            }
+        }
+        
+        loadUserDatabase();
+        
+        try {
+            listener = new ServerSocket();
+            listener.setReuseAddress(true);
+            InetAddress serverIP = InetAddress.getByName(serverAddress);
+            listener.bind(new InetSocketAddress(serverIP, serverPort));
+            
+            System.out.format("Le serveur est lancé sur %s:%d%n", serverAddress, serverPort);
+            
+            int clientNumber = 0;
+            while (true) {
+                Socket clientSocket = listener.accept();
+                // On passe la DB et le fichier au handler pour la persistance
+                new ClientHandler(clientSocket, clientNumber++, userDatabase, USER_DB_FILE).start();
+            }
+            
+        } catch (IOException e) {
+            System.err.println("Erreur serveur: " + e.getMessage());
+        } finally {
+            try { if (listener != null) listener.close(); } catch (IOException e) {}
+        }
+    }
+
+    private static boolean isValidIP(String ip) {
+        String[] parts = ip.split("\\.");
+        if (parts.length != 4) return false;
+        for (String part : parts) {
+            try {
+                int num = Integer.parseInt(part);
+                if (num < 0 || num > 255) return false;
+            } catch (NumberFormatException e) { return false; }
+        }
+        return true;
+    }
+
+    private static synchronized void loadUserDatabase() {
+        File file = new File(USER_DB_FILE);
+        if (!file.exists()) return;
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",");
+                if (parts.length == 2) userDatabase.put(parts[0], parts[1]);
+            }
+        } catch (IOException e) { e.printStackTrace(); }
+    }
+}

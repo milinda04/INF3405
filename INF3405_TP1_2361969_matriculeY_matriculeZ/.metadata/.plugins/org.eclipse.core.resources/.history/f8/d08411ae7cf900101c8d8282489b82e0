@@ -1,0 +1,55 @@
+package client;
+
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+public class Client {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        System.out.print("IP Serveur: ");
+        String ip = sc.nextLine();
+        System.out.print("Port: ");
+        int port = Integer.parseInt(sc.nextLine());
+
+        System.out.print("User: ");
+        String user = sc.nextLine();
+        System.out.print("Pass: ");
+        String pass = sc.nextLine();
+
+        try (Socket s = new Socket(ip, port);
+             DataOutputStream out = new DataOutputStream(s.getOutputStream());
+             DataInputStream in = new DataInputStream(s.getInputStream())) {
+
+            out.writeUTF(user);
+            out.writeUTF(pass);
+
+            if (in.readUTF().equals("AUTH_FAILED")) {
+                System.out.println("Erreur d'authentification.");
+                return;
+            }
+
+            System.out.print("Image à traiter: ");
+            String input = sc.nextLine();
+            System.out.print("Nom de sortie: ");
+            String output = sc.nextLine();
+
+            byte[] bytes = Files.readAllBytes(Paths.get(input));
+            out.writeUTF(input);
+            out.writeInt(bytes.length);
+            out.write(bytes);
+            System.out.println("Image envoyée...");
+
+            byte[] resp = new byte[in.readInt()];
+            in.readFully(resp);
+            Files.write(Paths.get(output), resp);
+            System.out.println("Image reçue et sauvegardée dans: " + Paths.get(output).toAbsolutePath());
+
+        } catch (Exception e) {
+            System.out.println("Erreur: " + e.getMessage());
+        }
+    }
+}

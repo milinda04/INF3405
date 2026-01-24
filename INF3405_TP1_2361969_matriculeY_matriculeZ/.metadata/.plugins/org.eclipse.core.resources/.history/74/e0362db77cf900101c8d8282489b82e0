@@ -1,0 +1,54 @@
+package server;
+
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class Server {
+    private static ServerSocket listener;
+    private static final String USER_DB_FILE = "users.txt";
+    private static Map<String, String> userDatabase = new HashMap<>();
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        loadUserDatabase();
+
+        System.out.print("Entrez l'adresse IP du serveur: ");
+        String ip = scanner.nextLine().trim();
+        System.out.print("Entrez le port (5000-5050): ");
+        int port = Integer.parseInt(scanner.nextLine().trim());
+
+        if (!isValidIP(ip) || port < 5000 || port > 5050) {
+            System.out.println("Paramètres invalides.");
+            return;
+        }
+
+        try {
+            listener = new ServerSocket();
+            listener.bind(new InetSocketAddress(InetAddress.getByName(ip), port));
+            System.out.format("Serveur lancé sur %s:%d%n", ip, port);
+
+            while (true) {
+                new ClientHandler(listener.accept(), userDatabase, USER_DB_FILE).start();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static boolean isValidIP(String ip) {
+        return ip.matches("^(\\d{1,3}\\.){3}\\d{1,3}$");
+    }
+
+    private static synchronized void loadUserDatabase() {
+        File f = new File(USER_DB_FILE);
+        if (!f.exists()) return;
+        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
+            String l;
+            while ((l = r.readLine()) != null) {
+                String[] p = l.split(",");
+                if (p.length == 2) userDatabase.put(p[0], p[1]);
+            }
+        } catch (IOException e) {}
+    }
+}

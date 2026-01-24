@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="java.lang.Class">
+		<item key="replaceBarOpen" value="false"/>
+		<list key="findhistory">
+			<item value="javax.imageio.ImageIO;"/>
+			<item value="java.awt.image.BufferedImage;"/>
+			<item value="class"/>
+			<item value="Serveur"/>
+		</list>
+	</section>
+</section>
